@@ -1,6 +1,6 @@
 package minecraft
 
-import {
+import (
 	"encoding/json"
 	"github.com/Tnze/go-mc/data/packetid"
 	"github.com/Tnze/go-mc/net/packet"
