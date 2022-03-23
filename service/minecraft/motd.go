@@ -34,7 +34,7 @@ func generateMotdPacket(protocolVersion int, motdFavicon, motdDescription string
 			Name     string `json:"name"`
 			Protocol int    `json:"protocol"`
 		}{
-			Name:     "ZBProxy " + version.Version,
+			Name:     "HyBoost",
 			Protocol: protocolVersion,
 		},
 		Players: struct {
