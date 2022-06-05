@@ -1,14 +1,17 @@
 package main
 
 import (
-	"ZBProxy/config"
-	"ZBProxy/console"
-	"ZBProxy/service"
-	"ZBProxy/version"
 	"fmt"
 	"github.com/fatih/color"
+	"github.com/layou233/ZBProxy/config"
+	"github.com/layou233/ZBProxy/console"
+	"github.com/layou233/ZBProxy/service"
+	"github.com/layou233/ZBProxy/version"
 	"log"
-	"sync"
+	"os"
+	"os/signal"
+	"runtime"
+	"syscall"
 )
 
 func main() {
@@ -20,15 +23,28 @@ func main() {
   / /   |  _  { |  ___/ |  _  /  | | | |   }  {     \  /
  / /__  | |_| | | |     | | \ \  | |_| |  / /\ \    / /
 /_____| |_____/ |_|     |_|  \_\ \_____/ /_/  \_\  /_/`))
-	color.HiGreen("Welcome to ZBProxy %s!\n\n", version.Version)
+	color.HiGreen("Welcome to ZBProxy %s!\n", version.Version)
+	color.HiBlack("Build Information: %s, %s-%s\n",
+		runtime.Version(), runtime.GOOS, runtime.GOARCH)
 	go version.CheckUpdate()
 
 	config.LoadConfig()
 
-	group := &sync.WaitGroup{}
 	for _, s := range config.Config.Services {
-		group.Add(1)
-		go service.StartNewService(s, group)
+		go service.StartNewService(s)
 	}
-	group.Wait()
+
+	{
+		osSignals := make(chan os.Signal, 1)
+		signal.Notify(osSignals, os.Interrupt, os.Kill, syscall.SIGTERM)
+		<-osSignals // wait for exits
+
+		// sometimes after the program exits on Windows, the ports are still occupied and "listening".
+		// so manually closes these listeners when the program exits.
+		for _, listener := range service.ListenerArray {
+			if listener != nil { // avoid null pointers
+				listener.Close()
+			}
+		}
+	}
 }

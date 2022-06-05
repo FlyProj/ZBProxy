@@ -94,12 +94,12 @@ jobs:
       CGO_ENABLED: 0
       
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
 
     - name: Set up Go
-      uses: actions/setup-go@v2
+      uses: actions/setup-go@v3
       with:
-        go-version: ^1.17.5
+        go-version: ^1.18
 
     - name: Tidy up Go Modules
       run: go mod tidy
@@ -112,14 +112,14 @@ jobs:
       run: mv ZBProxy-${{ matrix.goos }}-${{ matrix.goarch }}-${{ matrix.goarm }} ZBProxy-${{ matrix.goos }}-${{ matrix.goarch }}-${{ matrix.goarm }}.exe
 
     - name: Upload a Non-Windows Build Artifact
-      uses: actions/upload-artifact@v2.2.4
+      uses: actions/upload-artifact@v3.0.0
       if: ${{ env.GOOS != 'windows' }}
       with:
         name: ZBProxy-${{ matrix.goos }}-${{ matrix.goarch }}-${{ matrix.goarm }}
         path: ZBProxy-${{ matrix.goos }}-${{ matrix.goarch }}-${{ matrix.goarm }}
 
     - name: Upload a Windows Build Artifact
-      uses: actions/upload-artifact@v2.2.4
+      uses: actions/upload-artifact@v3.0.0
       if: ${{ env.GOOS == 'windows' }}
       with:
         name: ZBProxy-${{ matrix.goos }}-${{ matrix.goarch }}-${{ matrix.goarm }}.exe

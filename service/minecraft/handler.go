@@ -1,14 +1,19 @@
 package minecraft
 
 import (
-	"ZBProxy/config"
-	"fmt"
+	"errors"
 	mcnet "github.com/Tnze/go-mc/net"
 	"github.com/Tnze/go-mc/net/packet"
 	"github.com/fatih/color"
+	"github.com/layou233/ZBProxy/config"
 	"log"
 	"net"
 )
+
+// ErrSuccessfullyHandledMOTDRequest means the Minecraft client requested for MOTD
+// and has been correctly handled by program. This used to skip the data forward
+// process and directly go to the end of this connection.
+var ErrSuccessfullyHandledMOTDRequest = errors.New("")
 
 func badPacketPanicRecover(s *config.ConfigProxyService) {
 	// Non-Minecraft packet which uses `go-mc` packet scan method may cause panic.
@@ -18,10 +23,10 @@ func badPacketPanicRecover(s *config.ConfigProxyService) {
 	}
 }
 
-func NewConnHandler(s *config.ConfigProxyService, c *net.Conn) (*mcnet.Conn, error) {
+func NewConnHandler(s *config.ConfigProxyService, c *net.TCPConn, addr *net.TCPAddr) (*net.TCPConn, error) {
 	defer badPacketPanicRecover(s)
 
-	conn := mcnet.WrapConn(*c)
+	conn := mcnet.WrapConn(c)
 	var p packet.Packet
 	err := conn.ReadPacket(&p)
 	if err != nil {
@@ -32,7 +37,7 @@ func NewConnHandler(s *config.ConfigProxyService, c *net.Conn) (*mcnet.Conn, err
 		protocol  packet.VarInt
 		hostname  packet.String
 		port      packet.UnsignedShort
-		nextState packet.VarInt
+		nextState packet.Byte
 	)
 	err = p.Scan(&protocol, &hostname, &port, &nextState)
 	if err != nil {
@@ -41,12 +46,14 @@ func NewConnHandler(s *config.ConfigProxyService, c *net.Conn) (*mcnet.Conn, err
 	if nextState == 1 { // status
 		if s.MotdDescription == "" && s.MotdFavicon == "" {
 			// directly proxy MOTD from server
-			remote, err := mcnet.DialMC(fmt.Sprintf("%v:%v", s.TargetAddress, s.TargetPort))
+
+			remote, err := net.DialTCP("tcp", nil, addr)
 			if err != nil {
 				return nil, err
 			}
+			remoteMC := mcnet.WrapConn(remote)
 
-			remote.WritePacket(p)      // Server bound : Handshake
+			remoteMC.WritePacket(p)    // Server bound : Handshake
 			remote.Write([]byte{1, 0}) // Server bound : Status Request
 			return remote, nil
 		} else {
@@ -64,7 +71,7 @@ func NewConnHandler(s *config.ConfigProxyService, c *net.Conn) (*mcnet.Conn, err
 			conn.WritePacket(p)
 
 			conn.Close()
-			return conn, nil
+			return nil, ErrSuccessfullyHandledMOTDRequest
 		}
 	}
 	// else: login
@@ -82,16 +89,17 @@ func NewConnHandler(s *config.ConfigProxyService, c *net.Conn) (*mcnet.Conn, err
 	log.Printf("Service %s : A new Minecraft player requested a login: %s", s.Name, playerName)
 	// TODO PlayerName handle
 
-	remote, err := mcnet.DialMC(fmt.Sprintf("%v:%v", s.TargetAddress, s.TargetPort))
+	remote, err := net.DialTCP("tcp", nil, addr)
 	if err != nil {
 		log.Printf("Service %s : Failed to dial to target server: %v", s.Name, err.Error())
 		conn.Close()
 		return nil, err
 	}
+	remoteMC := mcnet.WrapConn(remote)
 
 	// Hostname rewritten
 	if s.EnableHostnameRewrite {
-		err = remote.WritePacket(packet.Marshal(
+		err = remoteMC.WritePacket(packet.Marshal(
 			0x0, // Server bound : Handshake
 			protocol,
 			packet.String(s.RewrittenHostname),
@@ -99,7 +107,7 @@ func NewConnHandler(s *config.ConfigProxyService, c *net.Conn) (*mcnet.Conn, err
 			packet.Byte(2),
 		))
 	} else {
-		err = remote.WritePacket(packet.Marshal(
+		err = remoteMC.WritePacket(packet.Marshal(
 			0x0, // Server bound : Handshake
 			protocol,
 			hostname,
@@ -112,7 +120,7 @@ func NewConnHandler(s *config.ConfigProxyService, c *net.Conn) (*mcnet.Conn, err
 	}
 
 	// Server bound : Login Start
-	err = remote.WritePacket(p)
+	err = remoteMC.WritePacket(p)
 	if err != nil {
 		return nil, err
 	}
